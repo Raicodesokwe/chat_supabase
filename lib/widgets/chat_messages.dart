@@ -1,31 +1,73 @@
+
+import 'dart:async';
+import 'dart:developer';
+
 import 'package:chat_supabase/widgets/message_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../utils/constants.dart';
 
-class ChatMessages extends StatelessWidget {
+class ChatMessages extends StatefulWidget {
   final String channelName;
   final String userIdentifier;
   const ChatMessages({super.key, required this.channelName,required this.userIdentifier });
 
-  Stream<List<Map<String, dynamic>>> _messageStream() {
-    return supabaseChat
-        .stream(primaryKey: [id])
-        .eq(channel, channelName) // Filter by channel
-        .order(createdAt, ascending: true)
-        .map((event) => event.map((e) => e).toList());
+  @override
+  State<ChatMessages> createState() => _ChatMessagesState();
+}
+
+class _ChatMessagesState extends State<ChatMessages> {
+  Stream<List<Map<String, dynamic>>>? _messageStream;
+  @override
+  void initState() {
+    super.initState();
+    _initializeStreamWithTimeout();
+  }
+    void _initializeStreamWithTimeout() {
+    _messageStream = supabaseChat
+        .stream(primaryKey: ['id'])
+        .eq('channel', widget.channelName) // Filter by channel
+        .order('created_at', ascending: true)
+        .map((event) => event.map((e) => e).toList())
+        .timeout(
+          const Duration(days: 1000),
+          onTimeout: (sink) {
+            debugPrint('Stream connection timed out. Retrying...');
+            // Close the sink to prevent further data from this stream
+            sink.close();
+            // Trigger a reconnection attempt by setting state
+            _retryConnection();
+          },
+        );
+  }
+
+  void _retryConnection() {
+    // Wait for a short duration before attempting to reconnect
+    Future.delayed(const Duration(seconds: 5), () {
+     if (mounted) {
+      setState(() {
+        _initializeStreamWithTimeout();
+      });
+    }
+    });
+  }
+  @override
+  void dispose() {
+    super.dispose();
+    supabase.removeAllChannels();
   }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Map<String, dynamic>>>(
-  stream: _messageStream(),
+  stream: _messageStream,
   builder: (context, snapshot) {
     if (snapshot.connectionState == ConnectionState.waiting) {
       return const Center(child: CircularProgressIndicator());
     }
     if (snapshot.hasError) {
+      log('Error: ${snapshot.error}');
       return Center(child: Text('Error: ${snapshot.error}'));
     }
     if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -79,7 +121,7 @@ class ChatMessages extends StatelessWidget {
                   if (nextUserIsSame) {
                     return MessageBubble.next(
                       message: messageItem[message],
-                      isMe: userIdentifier == currentMessageUserId,
+                      isMe: widget.userIdentifier == currentMessageUserId,
                       dateTime: messageDate,
                     );
                   } else {
@@ -87,7 +129,7 @@ class ChatMessages extends StatelessWidget {
                       userImage: messageItem[avatarUrl],
                       username: messageItem[username],
                       message: messageItem[message],
-                      isMe: userIdentifier == currentMessageUserId,
+                      isMe: widget.userIdentifier == currentMessageUserId,
                       dateTime: messageDate,
                     );
                   }
