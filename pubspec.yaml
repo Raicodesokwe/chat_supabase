@@ -1,6 +1,6 @@
 name: chat_supabase
 description: "A flutter package meant to ease the process of creating chat applications in Flutter. We use supabase as the db"
-version: 1.0.0
+version: 1.1.0
 homepage:
 
 environment:
